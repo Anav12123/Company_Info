@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
 
 STRUCTURED_DATA_DIR = BASE_DIR / "structured_data"
 
@@ -99,6 +99,7 @@ def load_structured_data(folder_path):
 
     return pd.DataFrame(rows)
 
+import json
 
 # ============================================================
 # UPLOAD TO GOOGLE SHEETS
@@ -113,7 +114,8 @@ def upload_to_google_sheets(df, sheet_name, creds_file):
         "https://www.googleapis.com/auth/drive"
     ]
 
-    creds = Credentials.from_service_account_file(creds_file, scopes=scopes)
+    service_account_info = json.loads(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"))
+    creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
     client = gspread.authorize(creds)
 
     sheet = client.open(sheet_name).sheet1
