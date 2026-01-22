@@ -626,7 +626,14 @@ def calculate_lead_score(row):
     return min(score, 100)
 
 def update_structured_json_with_scores(company_df, structured_dir="structured_data"):
-    # Build lookup from company_df
+    structured_dir = Path(structured_dir)
+
+    # ✅ SAFETY CHECK
+    if not structured_dir.exists():
+        print(f"⚠️ structured directory not found: {structured_dir}")
+        print("⚠️ Skipping structured JSON score update")
+        return
+
     score_map = {
         row["Company"].strip().lower(): {
             "lead_score": float(row["Lead Score"]),
@@ -637,37 +644,33 @@ def update_structured_json_with_scores(company_df, structured_dir="structured_da
 
     updated = 0
 
-    for file in os.listdir(structured_dir):
-        if not file.endswith("_Structured.json"):
-            continue
+    for file in structured_dir.glob("*_Structured.json"):
+        try:
+            with file.open("r", encoding="utf-8") as f:
+                data = json.load(f)
 
-        file_path = os.path.join(structured_dir, file)
+            meta_name = (
+                data.get("meta", {})
+                .get("company_name", "")
+                .strip()
+                .lower()
+            )
 
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            if not meta_name or meta_name not in score_map:
+                continue
 
-        meta_name = (
-            data.get("meta", {})
-            .get("company_name", "")
-            .strip()
-            .lower()
-        )
+            data["lead_scoring"] = score_map[meta_name]
 
-        if not meta_name:
-            continue
+            with file.open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
 
-        # Match by normalized company name
-        if meta_name not in score_map:
-            continue
+            updated += 1
 
-        data["lead_scoring"] = score_map[meta_name]
-
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-
-        updated += 1
+        except Exception as e:
+            print(f"❌ Failed updating {file.name}: {e}")
 
     print(f"✅ Lead scoring injected into {updated} structured JSON files")
+
 
 
 
@@ -1000,4 +1003,5 @@ if st.session_state.df is not None:
     # --- DOWNLOAD ---
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button(label="📥 Download Full Report (CSV)", data=csv, file_name=f"Report.csv", mime="text/csv")
+
 
