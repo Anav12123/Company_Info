@@ -72,31 +72,33 @@ def flatten_json(data, parent_key="", sep="_"):
 # ============================================================
 # LOAD ALL STRUCTURED JSON FILES
 # ============================================================
+from pathlib import Path
 
 def load_structured_data(folder_path):
+    folder_path = Path(folder_path)
     rows = []
 
-    if not os.path.exists(folder_path):
-        raise FileNotFoundError(f"❌ Folder not found: {folder_path}")
+    if not folder_path.exists():
+        print(f"⚠️ Structured data directory not found: {folder_path}")
+        return pd.DataFrame()
 
-    files = [f for f in os.listdir(folder_path) if f.endswith(".json")]
+    files = list(folder_path.glob("*.json"))
 
     print(f"📂 Found {len(files)} structured JSON files")
 
     for file in files:
-        file_path = os.path.join(folder_path, file)
-
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with file.open("r", encoding="utf-8") as f:
                 data = json.load(f)
 
             flat = flatten_json(data)
             rows.append(flat)
 
         except Exception as e:
-            print(f"❌ Failed to process {file}: {e}")
+            print(f"❌ Failed to process {file.name}: {e}")
 
     return pd.DataFrame(rows)
+
 
 # ============================================================
 # UPLOAD TO GOOGLE SHEETS
