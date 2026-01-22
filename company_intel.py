@@ -22,11 +22,32 @@ RAW_DEBUG_FILE = "raw_search_logs_by_simple_approach.txt"
 os.makedirs(os.path.dirname(FINAL_OUTPUT_FILE), exist_ok=True)
 
  
-# 🔑 API Key (Replace with yours if not in environment)
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+# # 🔑 API Key (Replace with yours if not in environment)
+# GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
  
-# Initialize AI Client
-client = Groq(api_key=GROQ_API_KEY)
+# # Initialize AI Client
+# client = Groq(api_key=GROQ_API_KEY)
+
+# --- 🔑 DYNAMIC KEY LOADER ---
+def get_api_keys(prefix):
+    keys = []
+    i = 1
+    while True:
+        key = os.environ.get(f"{prefix}_{i}")
+        if key:
+            keys.append(key)
+            i += 1
+        else:
+            break
+    # Fallback: if without Number API key
+    if not keys and os.environ.get(prefix):
+        keys.append(os.environ.get(prefix))
+    return keys
+
+# Load all Groq Keys
+GROQ_KEYS = get_api_keys("GROQ_API_KEY")
+
+
  
 # ==========================================
 # 🟢 2. HELPER FUNCTIONS
@@ -98,51 +119,64 @@ def search_ddg(query, time_filter=None):
 # ==========================================
 # 🟢 4. AI ANALYST (Groq)
 # ==========================================
- 
 def analyze_with_groq(company_name, raw_data):
     """
     Sends the gathered data to Groq to extract the single best answer.
+    Uses API Key Rotation to ensure reliability.
     """
-    try:
-        system_prompt = (
-            "You are a Senior Financial Data Analyst. Your job is to determine the single most accurate "
-            "Revenue and Employee count for a company based on search snippets.\n\n"
-           
-            "RULES FOR DECISION MAKING:\n"
-            "1. **Revenue:**\n"
-            "   - PRIORITY 1: If you see an INR (₹) figure from official sources (Tracxn, Zaubacorp, News) for FY24/25, USE IT. Convert to a clean string (e.g., '₹275 Cr').\n"
-            "   - PRIORITY 2: If no INR figure exists, use the most credible USD figure (e.g., from RocketReach or Press Release). \n"
-            "   - IGNORE: 'Growjo' or 'ZoomInfo' if they look like automated estimates (e.g., revenue per employee calculations).\n"
-            "2. **Employees:**\n"
-            "   - Trust 'RocketReach' or 'LinkedIn' snippets the most.\n"
-            "   - Prefer exact numbers (e.g., 402) over ranges (e.g., 200-500).\n"
-            "3. **Output Format:**\n"
-            "   - Return ONLY a simple JSON object. No lists, no sources, no explanations.\n"
-            "   - Keys must be exactly: 'Annual Revenue' and 'Total Employee Count'.\n\n"
-            "FORMAT EXAMPLE:\n"
-            "{\n"
-            '  "Annual Revenue": "$3 million",\n'
-            '  "Total Employee Count": 31\n'
-            "}"
-        )
-       
-        user_content = f"Target Company: {company_name}\n\nSearch Snippets:\n{raw_data}"
- 
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=0,
-            response_format={"type": "json_object"}
-        )
-        return json.loads(completion.choices[0].message.content)
- 
-    except Exception:
-        return {"Annual Revenue": "Not Found", "Total Employee Count": "Not Found"}
- 
+    # Define the system prompt with strict decision-making rules
+    system_prompt = (
+        "You are a Senior Financial Data Analyst. Your job is to determine the single most accurate "
+        "Revenue and Employee count for a company based on search snippets.\n\n"
+        
+        "RULES FOR DECISION MAKING:\n"
+        "1. **Revenue:**\n"
+        "   - PRIORITY 1: If you see an INR (₹) figure from official sources (Tracxn, Zaubacorp, News) for FY24/25, USE IT. Convert to a clean string (e.g., '₹275 Cr').\n"
+        "   - PRIORITY 2: If no INR figure exists, use the most credible USD figure (e.g., from RocketReach or Press Release). \n"
+        "   - IGNORE: 'Growjo' or 'ZoomInfo' if they look like automated estimates (e.g., revenue per employee calculations).\n"
+        "2. **Employees:**\n"
+        "   - Trust 'RocketReach' or 'LinkedIn' snippets the most.\n"
+        "   - Prefer exact numbers (e.g., 402) over ranges (e.g., 200-500).\n"
+        "3. **Output Format:**\n"
+        "   - Return ONLY a simple JSON object. No lists, no sources, no explanations.\n"
+        "   - Keys must be exactly: 'Annual Revenue' and 'Total Employee Count'.\n\n"
+        "FORMAT EXAMPLE:\n"
+        "{\n"
+        '  "Annual Revenue": "$3 million",\n'
+        '  "Total Employee Count": 31\n'
+        "}"
+    )
+    
+    user_content = f"Target Company: {company_name}\n\nSearch Snippets:\n{raw_data}"
 
+    # 🔄 ROTATION LOGIC: Iterate through all available API keys
+    for index, api_key in enumerate(GROQ_KEYS):
+        try:
+            # Initialize the client with the current key in the loop
+            client = Groq(api_key=api_key)
+            
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                temperature=0,
+                response_format={"type": "json_object"}
+            )
+            return json.loads(completion.choices[0].message.content)
+
+        except Exception as e:
+            print(f"      ⚠️ Groq Key {index+1} Failed: {e}")
+            
+            # Check if there are more keys available to try
+            if index < len(GROQ_KEYS) - 1:
+                print("      🔄 Switching to next API Key...")
+                time.sleep(5) # Short pause before the next attempt
+            else:
+                # All keys have failed
+                print("      ❌ All Groq API Keys failed.")
+                return {"Annual Revenue": "Not Found", "Total Employee Count": "Not Found"}
 
 # ==========================================
 # 🟢 5. MAIN LOGIC LOOP
@@ -205,13 +239,13 @@ def main():
                 snippet_text = search_ddg(query_text, time_filter)
                
                 if snippet_text == "BLOCK":
-                    wait = random.uniform(30, 60)
+                    wait = random.uniform(120, 180)
                     print(f"      🛑 Blocked! Sleeping {wait:.1f}s...")
                     time.sleep(wait)
                     continue
                
                 if snippet_text: break
-                time.sleep(2) # Short wait between retries
+                time.sleep(30) # Short wait between retries
            
             if snippet_text:
                 # Add result to our data pile
@@ -221,7 +255,7 @@ def main():
                 print(f"      🔸 No data found for query.")
  
             # ⏳ DELAY BETWEEN QUERIES (Safe Time)
-            delay = random.uniform(5, 8)
+            delay = random.uniform(50, 70)
             print(f"      ⏳ Waiting {delay:.1f}s...")
             time.sleep(delay)
  
@@ -239,8 +273,9 @@ def main():
             final_data[company] = {"Annual Revenue": "Not Found", "Total Employee Count": "Not Found"}
             save_json(final_data)
  
-        print(f"      💤 Cooling down before next company...\n")
-        time.sleep(3)
+        cooldown = random.uniform(60, 90)
+        print(f"[SLEEP] Cooling down for {cooldown:.1f}s before next company...\n")
+        time.sleep(cooldown)
  
     print("\n🎉 All Done! Check Final_Company_Data.json")
 
