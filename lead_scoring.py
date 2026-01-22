@@ -6,21 +6,49 @@ from dotenv import load_dotenv
 from groq import Groq
 import gspread
 from google.oauth2.service_account import Credentials
-# --- 1. SETUP & CONFIGURATION ---
 import json
+
+# --- 1. SETUP & CONFIGURATION ---
+
 # Load API Keys from .env file
 load_dotenv()
 
+# --- 🔄 CHANGE 1: DYNAMIC KEY LOADING ---
+def get_api_keys(prefix):
+    """
+    Finds all env variables starting with PREFIX_ (e.g., GROQ_API_KEY_1)
+    Returns a list of keys.
+    """
+    keys = []
+    i = 1
+    while True:
+        key = os.getenv(f"{prefix}_{i}")
+        if key:
+            keys.append(key)
+            i += 1
+        else:
+            break
+    # Fallback: Check for plain key
+    if not keys and os.getenv(prefix):
+        keys.append(os.getenv(prefix))
+    return keys
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-# Initialize Groq Client
-client = Groq(api_key=GROQ_API_KEY)
-# Import Sheet Name from your existing file
+# Load all Groq keys
+GROQ_KEYS = get_api_keys("GROQ_API_KEY")
+
+if not GROQ_KEYS:
+    # Fallback logic
+    if os.getenv("GROQ_API_KEY"):
+        GROQ_KEYS = [os.getenv("GROQ_API_KEY")]
+    else:
+        raise ValueError("[CRITICAL ERROR] No GROQ_API_KEYs found in .env file")
+
+# Import Sheet Name
 try:
     from upload_to_sheets import GOOGLE_SHEET_NAME
 except ImportError:
-    GOOGLE_SHEET_NAME = "Company_data" # Default fallback
-    print(f"⚠️ Warning: Could not import sheet name. Using default: {GOOGLE_SHEET_NAME}")
+    GOOGLE_SHEET_NAME = "Company_data" 
+    print(f"[WARNING] Could not import sheet name. Using default: {GOOGLE_SHEET_NAME}")
 
 # --- 2. GOOGLE SHEETS CONNECTION ---
 
@@ -52,15 +80,13 @@ def generate_smart_summary(row_data):
     """
     Reads the full row data and generates a strategic summary.
     """
-    # --- Data Extraction (Matching your flattened headers) ---
+    # --- Data Extraction ---
     company = row_data.get("company_profile_company_name", row_data.get("Company", "Unknown"))
     industry = row_data.get("company_profile_industry", "Unknown")
-    
-    # Financials
     revenue = row_data.get("financials_estimated_revenue_usd", "Unknown")
     employees = row_data.get("financials_employees", "Unknown")
     
-    # User Inputs (Lead Score)
+    # User Inputs
     score = (
         row_data.get("lead_scoring_lead_score")
         or row_data.get("Lead Score")
@@ -73,9 +99,6 @@ def generate_smart_summary(row_data):
         or "No details"
     )
 
-
-    # Critical Signals (News, Tech, Funding)
-    # The 'news' column often contains raw text about funding/launches
     news_data = row_data.get("news", "")
     
     # --- Intelligent Prompt ---
@@ -118,17 +141,28 @@ def generate_smart_summary(row_data):
     - "🏢 ENTERPRISE (Big Ticket) - Score 15/15. Massive scale ($1B+) means high reliability needs. Pitch 'Dedicated Support Teams' to assist their internal IT dept."
     """
 
-    try:
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile", 
-            temperature=0.5,
-        )
-        return chat_completion.choices[0].message.content.strip()
+    # --- 🔄 CHANGE 2: ROTATION LOGIC ---
+    for index, api_key in enumerate(GROQ_KEYS):
+        try:
+            # Initialize client with the current key inside loop
+            client = Groq(api_key=api_key)
+
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.3-70b-versatile", 
+                temperature=0.5,
+            )
+            return chat_completion.choices[0].message.content.strip()
     
-    except Exception as e:
-        print(f"⚠️ AI Error for {company}: {e}")
-        return "Analysis Failed"
+        except Exception as e:
+            print(f"⚠️ Groq Key {index+1} Failed for {company}: {e}")
+            
+            # Switch to next key if available
+            if index < len(GROQ_KEYS) - 1:
+                print("🔄 Switching to next API Key...")
+                time.sleep(1)
+            else:
+                return "Analysis Failed"
 
 # --- 4. MAIN EXECUTION ---
 
@@ -163,21 +197,18 @@ def process_sheet_smartly():
         company_name = row.get("company_profile_company_name", row.get("Company", "Unknown"))
 
         # --- SKIP LOGIC ---
-        # 1. Skip if already analyzed
-        existing_summary = str(row.get(output_col, ""))
-        if len(existing_summary) > 10:
-            print(f"⏭️  Skipping {company_name}: Already analyzed.")
+        existing_summary = str(row.get(output_col, "")).strip()
+
+        is_failed_previous_run = any(x in existing_summary.lower() for x in ["analysis failed", "error", "failed to update"])
+       
+        if len(existing_summary) > 10 and not is_failed_previous_run:
+            print(f"[SKIP] {company_name}: Already analyzed.")
             continue
         
         # 2. Skip if no Score (Cannot explain what doesn't exist)
         score_val = (
             row.get("lead_scoring_lead_score")
             or row.get("Lead Score")
-        )
-
-        breakout_val = (
-            row.get("lead_scoring_rank_breakout")
-            or row.get("Rank (Breakout)")
         )
 
         if not score_val:
@@ -212,13 +243,8 @@ def process_sheet_smartly():
 
     print(f"✅ Success! Updated {updates_made} companies with Strategic Summaries.")
 
-
-
 def run_ai_strategic_layer():
     """
     Wrapper function for pipeline usage
     """
     process_sheet_smartly()
-
-
-
