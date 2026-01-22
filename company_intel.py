@@ -239,13 +239,13 @@ def main():
                 snippet_text = search_ddg(query_text, time_filter)
                
                 if snippet_text == "BLOCK":
-                    wait = random.uniform(20, 30)
+                    wait = random.uniform(30, 60)
                     print(f"      🛑 Blocked! Sleeping {wait:.1f}s...")
                     time.sleep(wait)
                     continue
                
                 if snippet_text: break
-                time.sleep(30) # Short wait between retries
+                time.sleep(2) # Short wait between retries
            
             if snippet_text:
                 # Add result to our data pile
@@ -255,7 +255,7 @@ def main():
                 print(f"      🔸 No data found for query.")
  
             # ⏳ DELAY BETWEEN QUERIES (Safe Time)
-            delay = random.uniform(10, 15)
+            delay = random.uniform(5, 8)
             print(f"      ⏳ Waiting {delay:.1f}s...")
             time.sleep(delay)
  
@@ -283,6 +283,7 @@ def enrich_companies_from_list(company_list):
     global TARGET_COMPANIES
     TARGET_COMPANIES = list(set(company_list))
     main()
+
 
 
 
