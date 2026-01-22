@@ -7,7 +7,7 @@ from groq import Groq
 import gspread
 from google.oauth2.service_account import Credentials
 # --- 1. SETUP & CONFIGURATION ---
-
+import json
 # Load API Keys from .env file
 load_dotenv()
 
@@ -37,7 +37,8 @@ def connect_to_sheet():
     ]
 
     try:
-        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+        service_account_info = json.loads(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"))
+        creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
         gc = gspread.authorize(creds)
         return gc
     except Exception as e:
