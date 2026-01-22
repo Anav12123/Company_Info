@@ -13,6 +13,7 @@ from company_cleaner import clean_all_unstructured_reports
 from upload_to_sheets import upload_structured_folder_to_sheets
 from lead_scoring import run_ai_strategic_layer
 import json
+from pathlib import Path
 
 
 
@@ -1003,5 +1004,6 @@ if st.session_state.df is not None:
     # --- DOWNLOAD ---
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button(label="📥 Download Full Report (CSV)", data=csv, file_name=f"Report.csv", mime="text/csv")
+
 
 
