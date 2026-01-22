@@ -100,6 +100,7 @@ def load_structured_data(folder_path):
     return pd.DataFrame(rows)
 
 import json
+import math
 
 # ============================================================
 # UPLOAD TO GOOGLE SHEETS
@@ -140,6 +141,8 @@ def upload_to_google_sheets(df, sheet_name, creds_file):
     # Merge (UPSERT)
     merged = pd.concat([existing_df, df]) \
         .drop_duplicates(subset=[key_col], keep="last")
+    merged = merged.replace([float("inf"), float("-inf")], "")
+    merged = merged.where(pd.notnull(merged), "")
 
     sheet.clear()
     sheet.update(
@@ -147,7 +150,6 @@ def upload_to_google_sheets(df, sheet_name, creds_file):
     )
 
     print("✅ Sheet updated (UPSERT complete)")
-
 
 # ============================================================
 # MAIN RUNNER
@@ -181,4 +183,5 @@ def upload_structured_folder_to_sheets():
         sheet_name=GOOGLE_SHEET_NAME,
         creds_file=SERVICE_ACCOUNT_FILE
     )
+
 
