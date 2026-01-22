@@ -258,21 +258,27 @@ def extract_phone_numbers(text):
 # MAIN PIPELINE
 # -------------------------------------------------
 import os
+from pathlib import Path
+
 def extract_company_intelligence(input_json, output_json):
-    with open(input_json, "r", encoding="utf-8") as f:
+    input_json = Path(input_json)
+    output_json = Path(output_json)
+
+    if not input_json.exists():
+        raise FileNotFoundError(f"Input JSON not found: {input_json}")
+
+    with input_json.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
     company_name = data.get("meta", {}).get("company_name", "")
-    
-    # Aggregate raw text
+
     combined_raw_text = ""
     for r in data.get("financial_intelligence", []):
         combined_raw_text += "\n" + r.get("content", "")
         combined_raw_text += "\n" + r.get("raw_content", "")
 
-    # Perform Extractions
     clean_light = clean_text_light(combined_raw_text)
-    
+
     output = {
         "meta": data.get("meta", {}),
         "company_profile": {
@@ -292,39 +298,46 @@ def extract_company_intelligence(input_json, output_json):
         }
     }
 
-    with open(output_json, "w", encoding="utf-8") as f:
+    # ✅ Ensure output directory exists
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_json.open("w", encoding="utf-8") as f:
         json.dump(output, f, indent=4, ensure_ascii=False)
 
     print(f"✅ Extracted structured intelligence → {output_json}")
+
+
 
 def clean_all_unstructured_reports(
     unstructured_dir="Unstructured_data",
     structured_dir="structured_data"
 ):
-    os.makedirs(structured_dir, exist_ok=True)
+    unstructured_dir = Path(unstructured_dir)
+    structured_dir = Path(structured_dir)
 
-    files = [
-        f for f in os.listdir(unstructured_dir)
-        if f.endswith("_Report.json")
-    ]
+    # ❗ SAFETY: unstructured dir may not exist yet
+    if not unstructured_dir.exists():
+        print(f"⚠️ Unstructured directory not found: {unstructured_dir}")
+        print("⚠️ Skipping cleaning step")
+        return
+
+    structured_dir.mkdir(parents=True, exist_ok=True)
+
+    files = list(unstructured_dir.glob("*_Report.json"))
 
     print(f"🧹 Cleaning {len(files)} unstructured reports...")
 
     for file in files:
-        input_path = os.path.join(unstructured_dir, file)
-        output_path = os.path.join(
-            structured_dir,
-            file.replace("_Report.json", "_Structured.json")
+        output_path = structured_dir / file.name.replace(
+            "_Report.json", "_Structured.json"
         )
 
         try:
             extract_company_intelligence(
-                input_json=input_path,
+                input_json=file,
                 output_json=output_path
             )
         except Exception as e:
-            print(f"❌ Failed cleaning {file}: {e}")
+            print(f"❌ Failed cleaning {file.name}: {e}")
 
     print("✅ All reports cleaned and structured.")
-
-
