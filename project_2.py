@@ -453,6 +453,41 @@ def normalize_revenue(rev):
     return None
 
 
+def normalize_employee_count(val):
+    """
+    Converts employee ranges or strings to a numeric midpoint.
+    """
+    if val is None:
+        return None
+
+    if isinstance(val, int):
+        return val
+
+    if not isinstance(val, str):
+        return None
+
+    v = val.lower().replace(",", "").strip()
+
+    # "5000+"
+    if v.endswith("+"):
+        return int(v[:-1])
+
+    # "201-500"
+    if "-" in v:
+        try:
+            low, high = v.split("-")
+            return (int(low) + int(high)) // 2
+        except:
+            return None
+
+    # "1000"
+    try:
+        return int(v)
+    except:
+        return None
+
+
+
 
 def revenue_match_score(val, user_choice):
     if val is None or user_choice == "Any":
@@ -474,7 +509,9 @@ def revenue_match_score(val, user_choice):
 
 
 def employee_match_score(val, user_choice):
-    if not val or user_choice == "Any":
+    val = normalize_employee_count(val)
+
+    if val is None or user_choice == "Any":
         return 0
 
     ranges = {
@@ -491,6 +528,7 @@ def employee_match_score(val, user_choice):
     if low * 0.8 <= val <= high * 1.2:
         return 2.5
     return 0
+
 
 def final_lead_score(row, intel, revenue_q, size_q):
     score = 0
@@ -962,3 +1000,4 @@ if st.session_state.df is not None:
     # --- DOWNLOAD ---
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button(label="📥 Download Full Report (CSV)", data=csv, file_name=f"Report.csv", mime="text/csv")
+
