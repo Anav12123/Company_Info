@@ -255,7 +255,7 @@ def main():
                 print(f"      🔸 No data found for query.")
  
             # ⏳ DELAY BETWEEN QUERIES (Safe Time)
-            delay = random.uniform(50, 70)
+            delay = random.uniform(10, 30)
             print(f"      ⏳ Waiting {delay:.1f}s...")
             time.sleep(delay)
  
@@ -273,7 +273,7 @@ def main():
             final_data[company] = {"Annual Revenue": "Not Found", "Total Employee Count": "Not Found"}
             save_json(final_data)
  
-        cooldown = random.uniform(60, 90)
+        cooldown = random.uniform(10, 40)
         print(f"[SLEEP] Cooling down for {cooldown:.1f}s before next company...\n")
         time.sleep(cooldown)
  
@@ -283,4 +283,5 @@ def enrich_companies_from_list(company_list):
     global TARGET_COMPANIES
     TARGET_COMPANIES = list(set(company_list))
     main()
+
 
